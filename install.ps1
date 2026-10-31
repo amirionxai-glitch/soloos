@@ -1,11 +1,13 @@
-# SoloOS installer for Windows: installs and updates everything SoloOS needs, with no admin rights, so a member's own
-# Claude Code can run it (README.md). Re-running it updates / repairs; finished steps are skipped. Same steps as
-# install.sh (the Mac one); keep the two in step.
+# SoloOS installer for Windows, app first (0.11.0): installs the app and the styles pack, then opens SoloOS within a
+# minute or two; the heavy editing tools (Git Bash, Claude Code, Python, WhisperX, the speech model) install inside the
+# app's Setup screen with progress and Retry, from install-tools.ps1 (the one place the tool steps live). No admin
+# rights except the one Visual C++ runtime prompt. Re-running it updates / repairs; finished steps are skipped. Same
+# steps as install.sh (the Mac one); keep the two in step. $env:SOS_WITH_TOOLS=1 also installs the tools here.
 #
 #   powershell -ExecutionPolicy Bypass -c "iex ((irm https://raw.githubusercontent.com/amirionxai-glitch/soloos/main/install.ps1) -join [char]10)"
 #   (one string into iex: Windows PowerShell 5.1 sometimes hands `irm | iex` the script line by line, 2026-10-31)
 #
-# What goes where (nothing needs admin):
+# What goes where (nothing needs admin; bin\, python\, git\, models\ and Claude Code come from install-tools.ps1):
 #   %LOCALAPPDATA%\SOS\bin\       micromamba
 #   %LOCALAPPDATA%\SOS\python\    Python 3.11 + ffmpeg/ffprobe + node + WhisperX + yt-dlp (conda-forge/pip)
 #   %LOCALAPPDATA%\SOS\git\       Git for Windows (portable): Claude Code runs its commands in Git Bash
@@ -26,16 +28,9 @@ function Install-SoloOS {
   $Repo = if ($env:SOS_REPO) { $env:SOS_REPO } else { "amirionxai-glitch/soloos" }
   $DL = if ($env:SOS_DOWNLOAD) { $env:SOS_DOWNLOAD } else { "https://github.com/$Repo/releases/latest/download" }
   $Support = Join-Path $env:LOCALAPPDATA "SOS"
-  $Bin = Join-Path $Support "bin"
-  $PyEnv = Join-Path $Support "python"
-  $Py = Join-Path $PyEnv "python.exe"
   $SosHome = Join-Path $Support "sos"
   $Cache = Join-Path $Support "downloads"
   $AppName = "SoloOS"
-  $env:MAMBA_ROOT_PREFIX = Join-Path $Support "mamba"
-  $env:HF_HOME = Join-Path $Support "models"
-  $env:HF_HUB_DISABLE_XET = "1"   # Hugging Face's Xet downloader stalled at 0 bytes on Windows; plain HTTPS works
-  $env:PATH = "$PyEnv;$PyEnv\Scripts;$PyEnv\Library\bin;$env:PATH"
 
   function Step($t) { Write-Host ""; Write-Host "> $t" -ForegroundColor White }
   function Ok($t) { Write-Host "  OK $t" }
@@ -54,11 +49,10 @@ function Install-SoloOS {
   if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { Warn "Windows on ARM: the x64 app runs in emulation (slower)." }
   if (-not $env:SOS_FROM_APP -and (Get-Process -Name $AppName -ErrorAction SilentlyContinue)) { throw "Quit $AppName first, then run this again." }
   Ok "Windows build $build"
-  New-Item -ItemType Directory -Force -Path $Bin, $Cache, $env:HF_HOME | Out-Null
+  New-Item -ItemType Directory -Force -Path $Cache | Out-Null
 
-  # ---- 2. tools: Python, ffmpeg, node, WhisperX, yt-dlp ----
-  Step "Installing the editing tools"
-  # micromamba 2.x needs the Visual C++ runtime (a fresh Windows often lacks it: micromamba then exits 0xC0000135 with no
+  # ---- 2. the Microsoft Visual C++ runtime (small; the editing tools need it) ----
+  # micromamba 2.x (installed by the app's Setup) needs the Visual C++ runtime (a fresh Windows often lacks it: micromamba then exits 0xC0000135 with no
   # output). Microsoft's own redistributable, once per PC; the only step that asks for admin (one Windows prompt).
   if (-not ((Test-Path "$env:SystemRoot\System32\vcruntime140_1.dll") -and (Test-Path "$env:SystemRoot\System32\msvcp140.dll"))) {
     Write-Host "  installing the Microsoft Visual C++ runtime (Windows asks to allow it)..."
@@ -71,69 +65,8 @@ function Install-SoloOS {
     Remove-Item -Force $vc -ErrorAction SilentlyContinue
     Ok "Microsoft Visual C++ runtime"
   }
-  $mm = Join-Path $Bin "micromamba.exe"
-  if (-not (Test-Path $mm)) {
-    Get-File "https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-win-64" "$mm.tmp"
-    Move-Item -Force "$mm.tmp" $mm -ErrorAction Stop
-  }
-  $mmv = & $mm --version
-  if ($LASTEXITCODE -ne 0) { throw "micromamba doesn't start on this PC (code $LASTEXITCODE)." }
-  Ok "micromamba $mmv"
-  if (-not (Test-Path $Py) -or -not (Test-Path "$PyEnv\Library\bin\ffprobe.exe") -or -not (Test-Path "$PyEnv\node.exe")) {
-    & $mm create -y -q -p $PyEnv -c conda-forge python=3.11 ffmpeg nodejs
-    if ($LASTEXITCODE -ne 0) { throw "The tools didn't install (micromamba)." }
-  }
-  & $mm clean -a -y -q *> $null
-  Ok "Python $((& $Py -V) -replace 'Python ',''), ffmpeg, node $(& "$PyEnv\node.exe" -v)"
-  & $Py -c "import whisperx, cv2, scipy, PIL, numpy" *> $null
-  if ($LASTEXITCODE -ne 0) {
-    & $Py -m pip install -q --upgrade pip
-    & $Py -m pip install -q whisperx numpy scipy pillow opencv-python-headless yt-dlp
-    if ($LASTEXITCODE -ne 0) { throw "WhisperX didn't install (pip)." }
-  } elseif (-not (Test-Path "$PyEnv\Scripts\yt-dlp.exe")) {
-    & $Py -m pip install -q yt-dlp
-  }
-  Ok "WhisperX, OpenCV, yt-dlp"
-  & $Py -c "from faster_whisper import download_model as d; d('medium.en', local_files_only=True)" *> $null
-  if ($LASTEXITCODE -ne 0) {
-    Write-Host "  downloading the speech model (about 1.5 GB, once)..."
-    & $Py -c "from faster_whisper import download_model as d; d('medium.en')" *> $null
-    if ($LASTEXITCODE -ne 0) { Warn "the speech model didn't download: the app's Setup has a Download button" }
-  }
-  & $Py -c "import torchaudio; torchaudio.pipelines.WAV2VEC2_ASR_BASE_960H.get_model()" *> $null
-  if ($LASTEXITCODE -ne 0) { Warn "the alignment model will download during the first edit" }
-  Ok "speech model"
 
-  # ---- 3. Git Bash (Claude Code on Windows runs its commands in it) ----
-  Step "Git Bash"
-  $gitBash = Join-Path $Support "git\bin\bash.exe"
-  $sysBash = @("$env:ProgramFiles\Git\bin\bash.exe", "$env:LOCALAPPDATA\Programs\Git\bin\bash.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
-  if ($sysBash) { Ok "Git for Windows ($sysBash)" }
-  elseif (Test-Path $gitBash) { Ok "portable Git" }
-  else {
-    $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/git-for-windows/git/releases/latest" -Headers @{ "User-Agent" = "SoloOS" } -ErrorAction Stop
-    $asset = $rel.assets | Where-Object { $_.name -match '^PortableGit-.*-64-bit\.7z\.exe$' } | Select-Object -First 1
-    if (-not $asset) { throw "Couldn't find Git for Windows' portable download." }
-    $sfx = Join-Path $Cache $asset.name
-    Get-File $asset.browser_download_url $sfx
-    # a GUI self-extractor: Start-Process -Wait, or PowerShell moves on before it has unpacked
-    Start-Process -FilePath $sfx -ArgumentList @("-y", "-o`"$(Join-Path $Support 'git')`"") -Wait -WindowStyle Hidden
-    Remove-Item -Force $sfx
-    if (-not (Test-Path $gitBash)) { throw "Git Bash didn't unpack." }
-    Ok "portable Git installed"
-  }
-
-  # ---- 4. Claude Code (Anthropic's own installer; never modified) ----
-  Step "Claude Code"
-  if ((Test-Path "$env:USERPROFILE\.local\bin\claude.exe") -or (Get-Command claude.exe -ErrorAction SilentlyContinue)) {
-    Ok "already installed"
-  } else {
-    if (-not $sysBash) { $env:CLAUDE_CODE_GIT_BASH_PATH = $gitBash }
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "iex ((irm https://claude.ai/install.ps1) -join [char]10)"
-    Ok "installed"
-  }
-
-  # ---- 5. the asset pack: styles, templates, music, sounds, the hub ----
+  # ---- 3. the asset pack: styles, templates, music, sounds, the hub ----
   Step "Styles and sounds"
   $manifestFile = Join-Path $Cache "sos-pack.json"
   # never resumed: curl -C - glued the new manifest onto the last release's copy ("Invalid JSON primitive", 2026-10-31)
@@ -183,7 +116,7 @@ function Install-SoloOS {
     Ok "installed $($manifest.version) (was $have)"
   }
 
-  # ---- 6. fonts (free ones, per user: no admin) ----
+  # ---- 4. fonts (free ones, per user: no admin) ----
   Step "Fonts"
   $fontDir = Join-Path $env:LOCALAPPDATA "Microsoft\Windows\Fonts"
   New-Item -ItemType Directory -Force -Path $fontDir | Out-Null
@@ -198,7 +131,7 @@ function Install-SoloOS {
   }
   Ok "Instrument Serif, Poppins"
 
-  # ---- 7. the app ----
+  # ---- 5. the app ----
   Step "The app"
   $dest = if ($env:SOS_APP_DEST) { $env:SOS_APP_DEST } else { Join-Path $env:LOCALAPPDATA "Programs" }
   # from the app's Update button (SOS_APP_STAGE): the new copy goes beside it, the app swaps it in once it has quit
@@ -233,22 +166,32 @@ function Install-SoloOS {
   }
   Ok "Start menu and desktop shortcut"
 
-  # ---- 8. what the member still installs themselves ----
+  # ---- 6. what the member still installs themselves ----
   Step "Checking Blender and After Effects"
   $blender = Get-ChildItem "$env:ProgramFiles\Blender Foundation\Blender*\blender.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
   $missing = $false
   if ($blender) { Ok "Blender ($($blender.FullName))" } else { Warn "Blender (Toon Story 3D uses it): https://www.blender.org/download/"; $missing = $true }
   Warn "After Effects styles are Mac only for now (the Windows version comes soon)."
-  $env:SOS_HOME = $SosHome
-  & $Py "$SosHome\pipeline\sos.py" doctor *> $null
 
+  # ---- 7. the editing tools: only when asked; otherwise the app's Setup screen installs them ----
+  if ($env:SOS_WITH_TOOLS) {
+    Step "Editing tools"
+    $tools = Join-Path $Cache "install-tools.ps1"
+    Remove-Item -Force $tools -ErrorAction SilentlyContinue
+    Get-File "$DL/install-tools.ps1" $tools
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $tools
+    if ($LASTEXITCODE -ne 0) { Warn "some tools didn't install: the app's Setup screen shows which, with Retry" }
+  }
+
+  if ($env:SOS_FROM_APP) { return }   # the app's Update button: it restarts into the new version itself
   Write-Host ""
   Write-Host "SoloOS is installed." -ForegroundColor Green
-  Write-Host "Next:"
-  if ($missing) { Write-Host "  - Install what's marked ! above (the app's Setup button shows the same list)." }
-  Write-Host "  - Open $AppName (Start menu or desktop). It asks for your Skool login, then press 'Sign in with Claude'."
-  Write-Host "  - Windows may say 'Windows protected your PC' the first time: More info -> Run anyway (the app isn't signed yet)."
-  if (-not $env:SOS_NO_OPEN) { Start-Process -FilePath $exe -ErrorAction SilentlyContinue }
+  if (-not $env:SOS_NO_OPEN) {
+    Start-Process -FilePath $exe -ErrorAction SilentlyContinue
+    Write-Host "SoloOS is open. Finish setup inside the app (it installs the editing tools while you look around)."
+  } else { Write-Host "Open $AppName (Start menu or desktop): it signs you in, then finishes setup by itself." }
+  Write-Host "If Windows says 'Windows protected your PC': More info -> Run anyway (the app isn't signed yet)."
+  if ($missing) { Write-Host "Install what's marked ! above when you can (the app's Setup button shows the same list)." }
 }
 
 try { Install-SoloOS }
