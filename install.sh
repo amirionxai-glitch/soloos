@@ -35,7 +35,7 @@ main() {
 
   # ---- 1. this Mac ----
   step "Checking this Mac"
-  [ "$(uname -s)" = "Darwin" ] || die "SoloOS runs on macOS only."
+  [ "$(uname -s)" = "Darwin" ] || die "This installer is for macOS. On Windows use install.ps1 (README.md)."
   local major
   major="$(sw_vers -productVersion | cut -d. -f1)"
   [ "$major" -ge 12 ] || die "macOS 12 or newer is needed (this Mac has $(sw_vers -productVersion))."
@@ -90,7 +90,9 @@ main() {
 
   # ---- 3. Claude Code (Anthropic's own installer; never modified) ----
   step "Claude Code"
-  if command -v claude >/dev/null 2>&1 || [ -x "$HOME/.local/bin/claude" ]; then
+  # every usual place, not just PATH: the app runs this with a short PATH, and a copy it missed got reinstalled (276 MB)
+  if command -v claude >/dev/null 2>&1 || [ -x "$HOME/.local/bin/claude" ] || [ -x /usr/local/bin/claude ] \
+    || [ -x /opt/homebrew/bin/claude ]; then
     ok "already installed"
   else
     curl -fsSL https://claude.ai/install.sh | bash
@@ -171,7 +173,7 @@ main() {
   [ "$missing" = 1 ] && echo "  • Install what's marked ! above (the app's Setup button shows the same list)."
   echo "  • In After Effects: Settings → Scripting & Expressions → tick “Allow Scripts to Write Files and Access Network”;"
   echo "    Settings → General → untick “Show Home Screen at Startup”."
-  echo "  • Open “$APP_NAME” and press “Sign in with Claude”."
+  echo "  • Open “${APP_NAME}” and press “Sign in with Claude”."
   [ -n "${SOS_NO_OPEN:-}" ] || open "$dest/$APP_NAME.app" 2>/dev/null || true
 }
 
