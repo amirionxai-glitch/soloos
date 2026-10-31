@@ -2,7 +2,8 @@
 # Claude Code can run it (README.md). Re-running it updates / repairs; finished steps are skipped. Same steps as
 # install.sh (the Mac one); keep the two in step.
 #
-#   powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/amirionxai-glitch/soloos/main/install.ps1 | iex"
+#   powershell -ExecutionPolicy Bypass -c "iex ((irm https://raw.githubusercontent.com/amirionxai-glitch/soloos/main/install.ps1) -join [char]10)"
+#   (one string into iex: Windows PowerShell 5.1 sometimes hands `irm | iex` the script line by line, 2026-10-31)
 #
 # What goes where (nothing needs admin):
 #   %LOCALAPPDATA%\SOS\bin\       micromamba
@@ -128,7 +129,7 @@ function Install-SoloOS {
     Ok "already installed"
   } else {
     if (-not $sysBash) { $env:CLAUDE_CODE_GIT_BASH_PATH = $gitBash }
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm https://claude.ai/install.ps1 | iex"
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "iex ((irm https://claude.ai/install.ps1) -join [char]10)"
     Ok "installed"
   }
 
