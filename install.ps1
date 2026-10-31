@@ -135,13 +135,17 @@ function Install-SoloOS {
   # ---- 5. the asset pack: styles, templates, music, sounds, the hub ----
   Step "Styles and sounds"
   $manifestFile = Join-Path $Cache "sos-pack.json"
+  # never resumed: curl -C - glued the new manifest onto the last release's copy ("Invalid JSON primitive", 2026-10-31)
+  Remove-Item -Force $manifestFile -ErrorAction SilentlyContinue
   try { Get-File "$DL/sos-pack.json" $manifestFile } catch { throw "Couldn't reach the release ($DL). Check the internet connection and try again." }
   $manifest = Get-Content -Raw $manifestFile | ConvertFrom-Json
   $have = if (Test-Path "$SosHome\VERSION") { (Get-Content -Raw "$SosHome\VERSION").Trim() } else { "none" }
   if ($have -eq $manifest.version) { Ok "up to date ($have)" }
   else {
+    # each part is cached under its checksum: a resume only continues the same file, never an older release's part
+    function PartFile($p) { Join-Path $Cache ($p.sha256.Substring(0, 12) + "-" + $p.name) }
     foreach ($p in $manifest.parts) {
-      $f = Join-Path $Cache $p.name
+      $f = PartFile $p
       if ((Test-Path $f) -and ((Get-FileHash -Algorithm SHA256 $f).Hash.ToLower() -eq $p.sha256)) { continue }
       Write-Host "  downloading $($p.name)..."
       Get-File "$DL/$($p.name)" $f
@@ -149,7 +153,7 @@ function Install-SoloOS {
     }
     $tgz = Join-Path $Cache "sos-pack.tar.gz"
     $out = [IO.File]::Create($tgz)
-    try { foreach ($p in $manifest.parts) { $in = [IO.File]::OpenRead((Join-Path $Cache $p.name)); $in.CopyTo($out); $in.Close() } } finally { $out.Close() }
+    try { foreach ($p in $manifest.parts) { $in = [IO.File]::OpenRead((PartFile $p)); $in.CopyTo($out); $in.Close() } } finally { $out.Close() }
     $new = Join-Path $Support "sos.new"
     if (Test-Path $new) { Remove-Item -Recurse -Force $new }
     New-Item -ItemType Directory -Force -Path $new | Out-Null
@@ -174,7 +178,7 @@ function Install-SoloOS {
     Rename-Item $new "sos" -ErrorAction Stop
     Remove-Item -Recurse -Force "$Support\sos.old" -ErrorAction SilentlyContinue
     Remove-Item -Force $tgz
-    foreach ($p in $manifest.parts) { Remove-Item -Force (Join-Path $Cache $p.name) -ErrorAction SilentlyContinue }
+    foreach ($p in $manifest.parts) { Remove-Item -Force (PartFile $p) -ErrorAction SilentlyContinue }
     Ok "installed $($manifest.version) (was $have)"
   }
 
@@ -206,6 +210,7 @@ function Install-SoloOS {
   if ($appHave -eq $appWant) { Ok "up to date ($appHave)" }
   else {
     $zip = Join-Path $Cache "SOS-win-x64.zip"
+    Remove-Item -Force $zip -ErrorAction SilentlyContinue   # a leftover from another release must not be resumed into
     Get-File "$DL/SOS-win-x64.zip" $zip
     $target = Join-Path $into $AppName
     if (Test-Path $target) { Remove-Item -Recurse -Force $target }
