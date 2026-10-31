@@ -33,6 +33,7 @@ function Install-SoloOS {
   $AppName = "SoloOS"
   $env:MAMBA_ROOT_PREFIX = Join-Path $Support "mamba"
   $env:HF_HOME = Join-Path $Support "models"
+  $env:HF_HUB_DISABLE_XET = "1"   # Hugging Face's Xet downloader stalled at 0 bytes on Windows; plain HTTPS works
   $env:PATH = "$PyEnv;$PyEnv\Scripts;$PyEnv\Library\bin;$env:PATH"
 
   function Step($t) { Write-Host ""; Write-Host "> $t" -ForegroundColor White }
@@ -56,12 +57,27 @@ function Install-SoloOS {
 
   # ---- 2. tools: Python, ffmpeg, node, WhisperX, yt-dlp ----
   Step "Installing the editing tools"
+  # micromamba 2.x needs the Visual C++ runtime (a fresh Windows often lacks it: micromamba then exits 0xC0000135 with no
+  # output). Microsoft's own redistributable, once per PC; the only step that asks for admin (one Windows prompt).
+  if (-not ((Test-Path "$env:SystemRoot\System32\vcruntime140_1.dll") -and (Test-Path "$env:SystemRoot\System32\msvcp140.dll"))) {
+    Write-Host "  installing the Microsoft Visual C++ runtime (Windows asks to allow it)..."
+    $vc = Join-Path $Cache "vc_redist.x64.exe"
+    Get-File "https://aka.ms/vs/17/release/vc_redist.x64.exe" $vc
+    try { $p = Start-Process -FilePath $vc -ArgumentList "/install", "/quiet", "/norestart" -Verb RunAs -Wait -PassThru -ErrorAction Stop }
+    catch { throw "SoloOS needs the Microsoft Visual C++ runtime: run the installer again and press Yes when Windows asks." }
+    # 3010 = installed, restart pending (the DLLs work at once); 1638 = a newer one is already there
+    if ($p.ExitCode -notin 0, 3010, 1638) { throw "The Microsoft Visual C++ runtime didn't install (code $($p.ExitCode))." }
+    Remove-Item -Force $vc -ErrorAction SilentlyContinue
+    Ok "Microsoft Visual C++ runtime"
+  }
   $mm = Join-Path $Bin "micromamba.exe"
   if (-not (Test-Path $mm)) {
     Get-File "https://github.com/mamba-org/micromamba-releases/releases/latest/download/micromamba-win-64" "$mm.tmp"
     Move-Item -Force "$mm.tmp" $mm -ErrorAction Stop
   }
-  Ok "micromamba $(& $mm --version)"
+  $mmv = & $mm --version
+  if ($LASTEXITCODE -ne 0) { throw "micromamba doesn't start on this PC (code $LASTEXITCODE)." }
+  Ok "micromamba $mmv"
   if (-not (Test-Path $Py) -or -not (Test-Path "$PyEnv\Library\bin\ffprobe.exe") -or -not (Test-Path "$PyEnv\node.exe")) {
     & $mm create -y -q -p $PyEnv -c conda-forge python=3.11 ffmpeg nodejs
     if ($LASTEXITCODE -ne 0) { throw "The tools didn't install (micromamba)." }
@@ -81,6 +97,7 @@ function Install-SoloOS {
   if ($LASTEXITCODE -ne 0) {
     Write-Host "  downloading the speech model (about 1.5 GB, once)..."
     & $Py -c "from faster_whisper import download_model as d; d('medium.en')" *> $null
+    if ($LASTEXITCODE -ne 0) { Warn "the speech model didn't download: the app's Setup has a Download button" }
   }
   & $Py -c "import torchaudio; torchaudio.pipelines.WAV2VEC2_ASR_BASE_960H.get_model()" *> $null
   if ($LASTEXITCODE -ne 0) { Warn "the alignment model will download during the first edit" }
@@ -184,7 +201,9 @@ function Install-SoloOS {
   New-Item -ItemType Directory -Force -Path $into | Out-Null
   $appExe = Join-Path $dest "$AppName\$AppName.exe"
   $appHave = if (Test-Path $appExe) { (Get-Item $appExe).VersionInfo.FileVersion } else { "none" }
-  if ($appHave -eq $manifest.app_version) { Ok "up to date ($appHave)" }
+  # app_version_win: a Windows-only app build (made on the PC); without it the Windows app follows app_version
+  $appWant = if ($manifest.app_version_win) { $manifest.app_version_win } else { $manifest.app_version }
+  if ($appHave -eq $appWant) { Ok "up to date ($appHave)" }
   else {
     $zip = Join-Path $Cache "SOS-win-x64.zip"
     Get-File "$DL/SOS-win-x64.zip" $zip
@@ -195,7 +214,7 @@ function Install-SoloOS {
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$target\$AppName.exe")) { throw "The app didn't unpack. Run the installer again." }
     Remove-Item -Force $zip
     Get-ChildItem -Recurse $target | Unblock-File -ErrorAction SilentlyContinue
-    if ($into -eq $dest) { Ok "installed $($manifest.app_version) in $dest\$AppName" } else { Ok "downloaded $($manifest.app_version) (SoloOS restarts into it)" }
+    if ($into -eq $dest) { Ok "installed $appWant in $dest\$AppName" } else { Ok "downloaded $appWant (SoloOS restarts into it)" }
   }
   $exe = Join-Path $dest "$AppName\$AppName.exe"
   $shell = New-Object -ComObject WScript.Shell
