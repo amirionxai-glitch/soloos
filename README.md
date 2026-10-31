@@ -26,7 +26,7 @@ You're reading this because the person asked you to install SoloOS from this rep
    **Windows** (PowerShell or Command Prompt):
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/amirionxai-glitch/soloos/main/install.ps1 | iex"
+   powershell -ExecutionPolicy Bypass -c "iex ((irm https://raw.githubusercontent.com/amirionxai-glitch/soloos/main/install.ps1) -join [char]10)"
    ```
 
 3. When it ends, read its last lines back to the person:
