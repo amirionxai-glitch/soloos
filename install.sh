@@ -74,7 +74,14 @@ main() {
       curl -fsSL -o "$HOME/Library/Fonts/$f" "https://raw.githubusercontent.com/google/fonts/main/ofl/instrumentserif/$f"
     fi
   done
-  ok "Instrument Serif"
+  # the pack's free fonts (Inter, Poppins …): a font already installed is left alone
+  for f in "$SOS_HOME"/fonts/*.otf "$SOS_HOME"/fonts/*.ttf; do
+    [ -f "$f" ] || continue
+    b="$(basename "$f")"
+    case "$b" in ._*) continue ;; esac
+    [ -f "$HOME/Library/Fonts/$b" ] || [ -f "/Library/Fonts/$b" ] || cp "$f" "$HOME/Library/Fonts/$b" || true
+  done
+  ok "Fonts"
 
   # ---- 4. the app ----
   step "The app"
