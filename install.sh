@@ -162,7 +162,7 @@ install_pack() {
   while read -r name sum; do
     [ -n "$name" ] || continue
     if [ -f "$CACHE/$name" ] && [ "$(shasum -a 256 "$CACHE/$name" | cut -d' ' -f1)" = "$sum" ]; then continue; fi
-    echo "  downloading $name…"
+    echo "  downloading ${name}…"
     curl -fL --retry 3 -C - -o "$CACHE/$name" "$DL/$name" || curl -fL --retry 3 -o "$CACHE/$name" "$DL/$name"
     [ "$(shasum -a 256 "$CACHE/$name" | cut -d' ' -f1)" = "$sum" ] || { rm -f "$CACHE/$name"; die "$name didn't download correctly. Run the installer again."; }
   done <<<"$parts"
@@ -179,7 +179,7 @@ install_pack() {
       for f in MISTAKES-LOG.md WINS-LOG.md SOLO_OPERATOR/presets.json motion-library/editing-styles/*/LOG.md; do
         [ -f "$f" ] && [ -d "$new/$(dirname "$f")" ] && cp -p "$f" "$new/$f"
       done
-      [ -d SOLO_OPERATOR/brand ] && rm -rf "$new/SOLO_OPERATOR/brand" && cp -Rp SOLO_OPERATOR/brand "$new/SOLO_OPERATOR/brand"
+      if [ -d SOLO_OPERATOR/brand ]; then rm -rf "$new/SOLO_OPERATOR/brand" && cp -Rp SOLO_OPERATOR/brand "$new/SOLO_OPERATOR/brand"; fi
     )
     rm -rf "$SUPPORT/sos.old" && mv "$SOS_HOME" "$SUPPORT/sos.old"
   fi
