@@ -166,11 +166,47 @@ function Install-SoloOS {
   }
   Ok "Start menu and desktop shortcut"
 
-  # ---- 6. what the member still installs themselves ----
+  # ---- 6. Blender (installed for them) and what the member still installs themselves ----
+  # Blender (the free 3D styles): installed automatically when it's missing (the user, 2026-11-19), the portable zip from
+  # blender.org unpacked into %LOCALAPPDATA%\Programs\Blender Foundation\Blender 5.2 (no admin rights needed; the
+  # pipeline's sos_config.json looks there). SOS_NO_BLENDER=1 skips it.
   Step "Checking Blender and After Effects"
-  $blender = Get-ChildItem "$env:ProgramFiles\Blender Foundation\Blender*\blender.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+  $findBlender = {
+    @("$env:ProgramFiles\Blender Foundation\Blender*\blender.exe", "$env:LOCALAPPDATA\Programs\Blender Foundation\Blender*\blender.exe") |
+      ForEach-Object { Get-ChildItem $_ -ErrorAction SilentlyContinue } | Select-Object -First 1
+  }
+  $blender = & $findBlender
+  if (-not $blender -and -not $env:SOS_NO_BLENDER) {
+    $bv = if ($env:SOS_BLENDER_VERSION) { $env:SOS_BLENDER_VERSION } else { "5.2.4" }
+    $barch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+    $bname = "blender-$bv-windows-$barch"
+    $bzip = Join-Path $Cache "$bname.zip"
+    $bmm = ($bv -split "\.")[0..1] -join "."
+    $free = (Get-PSDrive -Name ($env:LOCALAPPDATA.Substring(0, 1))).Free
+    if ($free -lt 2GB) {
+      Warn "Blender: not enough free space to install it (needs about 2 GB). Free some space and run this again."
+    } else {
+      try {
+        Write-Host "  downloading Blender $bv (free, from blender.org)..."
+        $burl = if ($env:SOS_BLENDER_URL) { $env:SOS_BLENDER_URL } else { "https://download.blender.org/release/Blender$bmm/$bname.zip" }
+        Get-File $burl $bzip
+        $broot = Join-Path $env:LOCALAPPDATA "Programs\Blender Foundation"
+        $btmp = Join-Path $broot "_unpack"
+        Remove-Item -Recurse -Force $btmp -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Force -Path $btmp | Out-Null
+        Expand-Archive -Path $bzip -DestinationPath $btmp -Force
+        $inner = Get-ChildItem $btmp -Directory | Select-Object -First 1
+        $bdir = Join-Path $broot "Blender $bmm"
+        Remove-Item -Recurse -Force $bdir -ErrorAction SilentlyContinue
+        Move-Item $inner.FullName $bdir
+        Remove-Item -Recurse -Force $btmp -ErrorAction SilentlyContinue
+        Remove-Item -Force $bzip -ErrorAction SilentlyContinue
+      } catch { Warn "Blender didn't install automatically ($($_.Exception.Message))." }
+    }
+    $blender = & $findBlender
+  }
   $missing = $false
-  if ($blender) { Ok "Blender ($($blender.FullName))" } else { Warn "Blender (Toon Story 3D uses it): https://www.blender.org/download/"; $missing = $true }
+  if ($blender) { Ok "Blender ($($blender.FullName))" } else { Warn "Blender (the 3D styles use it, free): https://www.blender.org/download/"; $missing = $true }
   Warn "After Effects styles are Mac only for now (the Windows version comes soon)."
 
   # ---- 7. the editing tools: only when asked; otherwise the app's Setup screen installs them ----
