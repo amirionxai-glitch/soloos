@@ -115,11 +115,31 @@ main() {
     ok "removed the old $OLD_APP_NAME.app (it's SoloOS now)"
   fi
 
-  # ---- 5. what the member still installs themselves ----
+  # ---- 5. Blender (installed for them), and what the member still installs themselves ----
   step "Checking After Effects, Blender and fonts"
   local missing=0
   if ls -d /Applications/Adobe\ After\ Effects\ 20* >/dev/null 2>&1; then ok "After Effects"; else warn "After Effects: install it from Adobe Creative Cloud."; missing=1; fi
-  if [ -x /Applications/Blender.app/Contents/MacOS/Blender ]; then ok "Blender"; else warn "Blender (Voltage Cut uses it): https://www.blender.org/download/"; missing=1; fi
+  # Blender (the free 3D styles): installed automatically when it's missing, from blender.org (the user, 2026-11-19:
+  # members shouldn't have to). Apple Silicon only: Blender 5.x has no Intel Mac build. SOS_NO_BLENDER=1 skips it.
+  local bapp="${SOS_BLENDER_DEST:-/Applications}/Blender.app"   # SOS_BLENDER_DEST: tests only (the pipeline expects /Applications)
+  if [ ! -x "$bapp/Contents/MacOS/Blender" ] && [ "$ARCH" = arm64 ] && [ -z "${SOS_NO_BLENDER:-}" ]; then
+    local bv="${SOS_BLENDER_VERSION:-5.2.4}" bdmg bmnt bfree
+    bdmg="$CACHE/blender-$bv-macos-arm64.dmg"
+    bfree="$(df -m "$CACHE" | awk 'NR==2{print $4}')"
+    if [ -n "$bfree" ] && [ "$bfree" -lt 1500 ]; then
+      warn "Blender: not enough free space to install it (needs about 1.5 GB). Free some space and run this again."
+    else
+      echo "  downloading Blender $bv (free, from blender.org)…"
+      if curl -fL --retry 3 -C - -o "$bdmg" "${SOS_BLENDER_URL:-https://download.blender.org/release/Blender${bv%.*}/blender-$bv-macos-arm64.dmg}" \
+         && bmnt="$(mktemp -d /tmp/sos-blender.XXXXXX)" && hdiutil attach -nobrowse -quiet -mountpoint "$bmnt" "$bdmg"; then
+        ditto "$bmnt/Blender.app" "$bapp" || true
+        hdiutil detach -quiet "$bmnt" || true
+        xattr -dr com.apple.quarantine "$bapp" 2>/dev/null || true
+        rm -f "$bdmg"
+      fi
+    fi
+  fi
+  if [ -x "$bapp/Contents/MacOS/Blender" ]; then ok "Blender"; else warn "Blender (the 3D styles use it, free): https://www.blender.org/download/"; missing=1; fi
   if compgen -G "$HOME/Library/Fonts/SF-Pro-Display-*" >/dev/null || compgen -G "/Library/Fonts/SF-Pro-Display-*" >/dev/null \
     || compgen -G "$HOME/Library/Fonts/SFPRODISPLAY*" >/dev/null || compgen -G "/Library/Fonts/SFPRODISPLAY*" >/dev/null; then
     ok "SF Pro Display"
