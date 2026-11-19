@@ -30,11 +30,13 @@ You're reading this because the person asked you to install SoloOS from this rep
    ```
 
 3. When it ends, read its last lines back to the person:
-   - anything marked **!** they still have to install themselves: **Adobe After Effects** (Creative Cloud),
-     **Blender** (blender.org, free), **SF Pro** (developer.apple.com/fonts, free);
+   - **Blender** (free, for the 3D styles) is installed automatically (Apple Silicon Macs and Windows). Anything still
+     marked **!** they install themselves: **Adobe After Effects** (Creative Cloud, Pro styles only), **SF Pro**
+     (developer.apple.com/fonts, free), and Blender on an Intel Mac (blender.org);
+   - Free-plan members only need the 3D styles: skip After Effects and SF Pro for them, it's fine if those show **!**;
    - the two After Effects settings: *Settings → Scripting & Expressions → "Allow Scripts to Write Files and Access
      Network"* on, and *Settings → General → "Show Home Screen at Startup"* off;
-   - on Windows: After Effects styles show **Mac only for now**; Blender is the only extra install. The first launch
+   - on Windows: After Effects styles show **Mac only for now**; Blender is installed automatically. The first launch
      may show "Windows protected your PC": **More info → Run anyway** (the app isn't code-signed yet);
    - then open **SoloOS** (Mac: in Applications; Windows: Start menu or desktop). It first asks them to **sign in to Skool** with the account they use
      in the Solo Operators community (SoloOS is for members; it checks this each time it opens and works offline for
