@@ -159,6 +159,15 @@ install_pack() {
     i=$((i + 1))
   done
   [ -n "$parts" ] || die "The release list (sos-pack.json) couldn't be read. Run the installer again."
+  # room for the download + the unpacked copy next to the old one (2026-11-10: a full disk stopped an update halfway)
+  local bytes=0 j=0 sz
+  while sz="$(json "$manifest" "parts.$j.size")" && [ -n "$sz" ]; do bytes=$((bytes + sz)); j=$((j + 1)); done
+  local need_mb=$((bytes * 3 / 1000000 + 300)) free_mb
+  mkdir -p "$SUPPORT"
+  free_mb="$(df -m "$SUPPORT" | awk 'NR==2{print $4}')"
+  if [ -n "$free_mb" ] && [ "$free_mb" -lt "$need_mb" ]; then
+    die "Not enough free space on this Mac to update: SoloOS needs about $(( (need_mb + 999) / 1000 )) GB free and there's $((free_mb / 1000)).$(((free_mb % 1000) / 100)) GB. Free some space (empty the Trash, clear Downloads) and press Update again."
+  fi
   while read -r name sum; do
     [ -n "$name" ] || continue
     if [ -f "$CACHE/$name" ] && [ "$(shasum -a 256 "$CACHE/$name" | cut -d' ' -f1)" = "$sum" ]; then continue; fi
